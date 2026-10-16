@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// CXGameMode.h
 
 #pragma once
 
@@ -6,13 +6,30 @@
 #include "GameFramework/GameModeBase.h"
 #include "CXGameMode.generated.h"
 
-UCLASS(abstract)
+UCLASS(MinimalAPI)
 class ACXGameMode : public AGameModeBase
 {
 	GENERATED_BODY()
 
 public:
 	ACXGameMode();
+
+protected:
+	virtual AActor* ChoosePlayerStart_Implementation(AController* Player) override;
+
+	/** Called after a successful login.  This is the first place it is safe to call replicated functions on the PlayerController. */
+	virtual void PostLogin(APlayerController* NewPlayer);
+
+private:
+	bool IsPlayerStartAvailable(const APlayerStart* PlayerStart) const;
+
+private:
+	UPROPERTY(EditDefaultsOnly)
+	FVector VehicleSpawnCheckHalfExtent = FVector(250.0, 120.0, 80.0);
+
+	UPROPERTY(EditDefaultsOnly)
+	FVector VehicleSpawnCheckOffset = FVector(0.0, 0.0, 80.0);
+
 };
 
 

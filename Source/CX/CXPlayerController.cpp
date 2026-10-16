@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// CXPlayerController.cpp
 
 
 #include "CXPlayerController.h"
@@ -6,85 +6,98 @@
 #include "CXUI.h"
 #include "EnhancedInputSubsystems.h"
 #include "ChaosWheeledVehicleMovementComponent.h"
-#include "Blueprint/UserWidget.h"
-#include "CX.h"
-#include "Kismet/GameplayStatics.h"
-#include "GameFramework/PlayerStart.h"
-#include "Widgets/Input/SVirtualJoystick.h"
+#include "Net/UnrealNetwork.h"
+#include "GameFramework/PlayerState.h"
+#include "EngineUtils.h"
+#include "Subsystem/ChatSubsystem.h"
+
+void ACXPlayerController::STCChatLog_Implementation(const TArray<FChatData>& ChatLog)
+{
+	// Client 시점
+	// 신규 접속자가 서버로 부터 채팅 로그를 받음
+	if (UChatSubsystem* ChatSubsystem = GetWorld()->GetSubsystem<UChatSubsystem>())
+	{
+		ChatSubsystem->SetChatLog(ChatLog);
+	}
+}
+
+void ACXPlayerController::CTSChatMessage_Implementation(const FString& Message)
+{
+	UE_LOG(LogTemp, Warning, TEXT("%s"), *Message);
+
+	const FString PlayerName = PlayerState->GetPlayerName();
+	if (UChatSubsystem* ChatSubsystem = GetWorld()->GetSubsystem<UChatSubsystem>())
+	{
+		ChatSubsystem->AddChatMessage(PlayerName, Message);
+	}
+
+	for(TActorIterator<ACXPlayerController> It(GetWorld()); It; ++It)
+	{
+		if (ACXPlayerController* PC = *It)
+		{
+			PC->STCChatMessage(PlayerName, Message);
+		}
+	}
+}
+
+void ACXPlayerController::STCChatMessage_Implementation(const FString& Sender, const FString& Message)
+{
+	UE_LOG(LogTemp, Warning, TEXT("%s: %s"), *Sender, *Message);
+
+	VehicleUI->OnNewChatMessage(Sender, Message);
+}
 
 void ACXPlayerController::BeginPlay()
 {
 	Super::BeginPlay();
+
+	if (IsLocalController() == false)
+	{
+		return;
+	}
 	
-	// ensure we're attached to the vehicle pawn so that World Partition streaming works correctly
-	bAttachToPawn = true;
+	// spawn the UI widget and add it to the viewport
+	VehicleUI = CreateWidget<UCXUI>(this, VehicleUIClass);
+
+	check(VehicleUI);
+	VehicleUI->AddToViewport();
+
+	if (UChatSubsystem* ChatSubsystem = GetWorld()->GetSubsystem<UChatSubsystem>())
+	{
+		const TArray<FChatData>& ChatLog = ChatSubsystem->GetChatLog();
+
+		for (const FChatData& ChatData : ChatLog)
+		{
+			VehicleUI->OnNewChatMessage(ChatData.Sender, ChatData.Message);
+		}
+
+		ChatSubsystem->ClearChatLog();
+	}
 }
 
 void ACXPlayerController::SetupInputComponent()
 {
 	Super::SetupInputComponent();
 	
-	// only add IMCs for local player controllers
-	if (IsLocalPlayerController())
+	// get the enhanced input subsystem
+	if (UEnhancedInputLocalPlayerSubsystem* Subsystem = ULocalPlayer::GetSubsystem<UEnhancedInputLocalPlayerSubsystem>(GetLocalPlayer()))
 	{
-		// Add Input Mapping Contexts
-		if (UEnhancedInputLocalPlayerSubsystem* Subsystem = ULocalPlayer::GetSubsystem<UEnhancedInputLocalPlayerSubsystem>(GetLocalPlayer()))
+		// add the mapping context so we get controls
+		Subsystem->AddMappingContext(InputMappingContext, 0);
+
+		// optionally add the steering wheel context
+		if (bUseSteeringWheelControls && SteeringWheelInputMappingContext)
 		{
-			for (UInputMappingContext* CurrentContext : DefaultMappingContexts)
-			{
-				Subsystem->AddMappingContext(CurrentContext, 0);
-			}
-
-			// only add these IMCs if we're not using mobile touch input
-			if (!ShouldUseTouchControls())
-			{
-				for (UInputMappingContext* CurrentContext : MobileExcludedMappingContexts)
-				{
-					Subsystem->AddMappingContext(CurrentContext, 0);
-				}
-			}
-
-			if (bUseSteeringWheelControls)
-			{
-				Subsystem->AddMappingContext(SteeringWheelInputMappingContext, 0);
-			}
+			Subsystem->AddMappingContext(SteeringWheelInputMappingContext, 1);
 		}
 	}
+}
 
-	// only spawn UI on local player controllers
-	if (IsLocalPlayerController())
-	{
-		if (ShouldUseTouchControls())
-		{
-			// spawn the mobile controls widget
-			MobileControlsWidget = CreateWidget<UUserWidget>(this, MobileControlsWidgetClass);
+void ACXPlayerController::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const
+{
+	Super::GetLifetimeReplicatedProps(OutLifetimeProps);
 
-			if (MobileControlsWidget)
-			{
-				// add the controls to the player screen
-				MobileControlsWidget->AddToPlayerScreen(0);
-
-			} else {
-
-				UE_LOG(LogCX, Error, TEXT("Could not spawn mobile controls widget."));
-
-			}
-		}
-		
-
-		// spawn the UI widget and add it to the viewport
-		VehicleUI = CreateWidget<UCXUI>(this, VehicleUIClass);
-
-		if (VehicleUI)
-		{
-			VehicleUI->AddToPlayerScreen(0);
-
-		} else {
-
-			UE_LOG(LogCX, Error, TEXT("Could not spawn vehicle UI widget."));
-
-		}
-	}
+	DOREPLIFETIME(ThisClass, VehiclePawn);
 }
 
 void ACXPlayerController::Tick(float Delta)
@@ -104,32 +117,4 @@ void ACXPlayerController::OnPossess(APawn* InPawn)
 
 	// get a pointer to the controlled pawn
 	VehiclePawn = CastChecked<ACXPawn>(InPawn);
-
-	// subscribe to the pawn's OnDestroyed delegate
-	VehiclePawn->OnDestroyed.AddDynamic(this, &ACXPlayerController::OnPawnDestroyed);
-}
-
-void ACXPlayerController::OnPawnDestroyed(AActor* DestroyedPawn)
-{
-	// find the player start
-	TArray<AActor*> ActorList;
-	UGameplayStatics::GetAllActorsOfClass(GetWorld(), APlayerStart::StaticClass(), ActorList);
-
-	if (ActorList.Num() > 0)
-	{
-		// spawn a vehicle at the player start
-		const FTransform SpawnTransform = ActorList[0]->GetActorTransform();
-
-		if (ACXPawn* RespawnedVehicle = GetWorld()->SpawnActor<ACXPawn>(VehiclePawnClass, SpawnTransform))
-		{
-			// possess the vehicle
-			Possess(RespawnedVehicle);
-		}
-	}
-}
-
-bool ACXPlayerController::ShouldUseTouchControls() const
-{
-	// are we on a mobile platform? Should we force touch?
-	return SVirtualJoystick::ShouldDisplayTouchInterface() || bForceTouchControls;
 }

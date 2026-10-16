@@ -1,9 +1,10 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// CXPlayerController.h
 
 #pragma once
 
 #include "CoreMinimal.h"
 #include "GameFramework/PlayerController.h"
+#include "Subsystem/ChatSubsystem.h"
 #include "CXPlayerController.generated.h"
 
 class UInputMappingContext;
@@ -14,80 +15,70 @@ class UCXUI;
  *  Vehicle Player Controller class
  *  Handles input mapping and user interface
  */
-UCLASS(abstract, Config="Game")
-class ACXPlayerController : public APlayerController
+UCLASS(abstract)
+class CX_API ACXPlayerController : public APlayerController
 {
 	GENERATED_BODY()
 
 protected:
+	friend class UChatUI;
+	friend class ACXGameMode;
 
-	/** Input Mapping Contexts */
-	UPROPERTY(EditAnywhere, Category ="Input|Input Mappings")
-	TArray<UInputMappingContext*> DefaultMappingContexts;
+	UFUNCTION(Client, Reliable)
+	void STCChatLog(const TArray<FChatData>& ChatLog);
 
-	/** Input Mapping Contexts */
-	UPROPERTY(EditAnywhere, Category="Input|Input Mappings")
-	TArray<UInputMappingContext*> MobileExcludedMappingContexts;
+	UFUNCTION(Server, Reliable)
+	void CTSChatMessage(const FString& Message);
 
-	/** Mobile controls widget to spawn */
-	UPROPERTY(EditAnywhere, Category="Input|Touch Controls")
-	TSubclassOf<UUserWidget> MobileControlsWidgetClass;
+	UFUNCTION(Client, Reliable)
+	void STCChatMessage(const FString& Sender, const FString& Message);
 
-	/** Pointer to the mobile controls widget */
-	UPROPERTY()
-	TObjectPtr<UUserWidget> MobileControlsWidget;
+protected:
 
-	/** If true, the player will use UMG touch controls even if not playing on mobile platforms */
-	UPROPERTY(EditAnywhere, Config, Category = "Input|Touch Controls")
-	bool bForceTouchControls = false;
+	/** Input Mapping Context to be used for player input */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = Input)
+	UInputMappingContext* InputMappingContext;
 
 	/** If true, the optional steering wheel input mapping context will be registered */
-	UPROPERTY(EditAnywhere, Category = "Input|Steering Wheel Controls")
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = Input)
 	bool bUseSteeringWheelControls = false;
 
 	/** Optional Input Mapping Context to be used for steering wheel input.
 	 *  This is added alongside the default Input Mapping Context and does not block other forms of input.
 	 */
-	UPROPERTY(EditAnywhere, Category = "Input|Steering Wheel Controls", meta = (EditCondition = "bUseSteeringWheelControls"))
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = Input, meta=(EditCondition="bUseSteeringWheelControls"))
 	UInputMappingContext* SteeringWheelInputMappingContext;
 
-	/** Type of vehicle to automatically respawn when it's destroyed */
-	UPROPERTY(EditAnywhere, Category="Vehicle|Respawn")
-	TSubclassOf<ACXPawn> VehiclePawnClass;
-
 	/** Pointer to the controlled vehicle pawn */
+	UPROPERTY(Replicated)
 	TObjectPtr<ACXPawn> VehiclePawn;
 
 	/** Type of the UI to spawn */
-	UPROPERTY(EditAnywhere, Category="Vehicle|UI")
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = UI)
 	TSubclassOf<UCXUI> VehicleUIClass;
 
 	/** Pointer to the UI widget */
-	UPROPERTY()
 	TObjectPtr<UCXUI> VehicleUI;
-		
+
+	
+
+	// Begin Actor interface
 protected:
 
-	/** Gameplay initialization */
 	virtual void BeginPlay() override;
-
-	/** Input setup */
 	virtual void SetupInputComponent() override;
+	virtual void GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const;
 
 public:
 
-	/** Update vehicle UI on tick */
 	virtual void Tick(float Delta) override;
 
+	// End Actor interface
+
+	// Begin PlayerController interface
 protected:
 
-	/** Pawn setup */
 	virtual void OnPossess(APawn* InPawn) override;
 
-	/** Handles pawn destruction and respawning */
-	UFUNCTION()
-	void OnPawnDestroyed(AActor* DestroyedPawn);
-
-	/** Returns true if the player should use UMG touch controls */
-	bool ShouldUseTouchControls() const;
+	// End PlayerController interface
 };

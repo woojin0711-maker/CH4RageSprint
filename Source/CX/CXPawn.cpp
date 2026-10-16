@@ -10,10 +10,10 @@
 #include "EnhancedInputSubsystems.h"
 #include "InputActionValue.h"
 #include "ChaosWheeledVehicleMovementComponent.h"
-#include "CX.h"
-#include "TimerManager.h"
 
 #define LOCTEXT_NAMESPACE "VehiclePawn"
+
+DEFINE_LOG_CATEGORY(LogTemplateVehicle);
 
 ACXPawn::ACXPawn()
 {
@@ -88,24 +88,8 @@ void ACXPawn::SetupPlayerInputComponent(class UInputComponent* PlayerInputCompon
 	}
 	else
 	{
-		UE_LOG(LogCX, Error, TEXT("'%s' Failed to find an Enhanced Input component! This template is built to use the Enhanced Input system. If you intend to use the legacy system, then you will need to update this C++ file."), *GetNameSafe(this));
+		UE_LOG(LogTemplateVehicle, Error, TEXT("'%s' Failed to find an Enhanced Input component! This template is built to use the Enhanced Input system. If you intend to use the legacy system, then you will need to update this C++ file."), *GetNameSafe(this));
 	}
-}
-
-void ACXPawn::BeginPlay()
-{
-	Super::BeginPlay();
-
-	// set up the flipped check timer
-	GetWorld()->GetTimerManager().SetTimer(FlipCheckTimer, this, &ACXPawn::FlippedCheck, FlipCheckTime, true);
-}
-
-void ACXPawn::EndPlay(EEndPlayReason::Type EndPlayReason)
-{
-	// clear the flipped check timer
-	GetWorld()->GetTimerManager().ClearTimer(FlipCheckTimer);
-
-	Super::EndPlay(EndPlayReason);
 }
 
 void ACXPawn::Tick(float Delta)
@@ -125,104 +109,47 @@ void ACXPawn::Tick(float Delta)
 
 void ACXPawn::Steering(const FInputActionValue& Value)
 {
-	// route the input
-	DoSteering(Value.Get<float>());
-}
+	// get the input magnitude for steering
+	float SteeringValue = Value.Get<float>();
 
-void ACXPawn::Throttle(const FInputActionValue& Value)
-{
-	// route the input
-	DoThrottle(Value.Get<float>());
-}
-
-void ACXPawn::Brake(const FInputActionValue& Value)
-{
-	// route the input
-	DoBrake(Value.Get<float>());
-}
-
-void ACXPawn::StartBrake(const FInputActionValue& Value)
-{
-	// route the input
-	DoBrakeStart();
-}
-
-void ACXPawn::StopBrake(const FInputActionValue& Value)
-{
-	// route the input
-	DoBrakeStop();
-}
-
-void ACXPawn::StartHandbrake(const FInputActionValue& Value)
-{
-	// route the input
-	DoHandbrakeStart();
-}
-
-void ACXPawn::StopHandbrake(const FInputActionValue& Value)
-{
-	// route the input
-	DoHandbrakeStop();
-}
-
-void ACXPawn::LookAround(const FInputActionValue& Value)
-{
-	// route the input
-	DoLookAround(Value.Get<float>());
-}
-
-void ACXPawn::ToggleCamera(const FInputActionValue& Value)
-{
-	// route the input
-	DoToggleCamera();
-}
-
-void ACXPawn::ResetVehicle(const FInputActionValue& Value)
-{
-	// route the input
-	DoResetVehicle();
-}
-
-void ACXPawn::DoSteering(float SteeringValue)
-{
 	// add the input
 	ChaosVehicleMovement->SetSteeringInput(SteeringValue);
 }
 
-void ACXPawn::DoThrottle(float ThrottleValue)
+void ACXPawn::Throttle(const FInputActionValue& Value)
 {
+	// get the input magnitude for the throttle
+	float ThrottleValue = Value.Get<float>();
+
 	// add the input
 	ChaosVehicleMovement->SetThrottleInput(ThrottleValue);
-
-	// reset the brake input
-	ChaosVehicleMovement->SetBrakeInput(0.0f);
 }
 
-void ACXPawn::DoBrake(float BrakeValue)
+void ACXPawn::Brake(const FInputActionValue& Value)
 {
+	// get the input magnitude for the brakes
+	float BreakValue = Value.Get<float>();
+
 	// add the input
-	ChaosVehicleMovement->SetBrakeInput(BrakeValue);
-
-	// reset the throttle input
-	ChaosVehicleMovement->SetThrottleInput(0.0f);
+	ChaosVehicleMovement->SetBrakeInput(BreakValue);
 }
 
-void ACXPawn::DoBrakeStart()
+void ACXPawn::StartBrake(const FInputActionValue& Value)
 {
-	// call the Blueprint hook for the brake lights
+	// call the Blueprint hook for the break lights
 	BrakeLights(true);
 }
 
-void ACXPawn::DoBrakeStop()
+void ACXPawn::StopBrake(const FInputActionValue& Value)
 {
-	// call the Blueprint hook for the brake lights
+	// call the Blueprint hook for the break lights
 	BrakeLights(false);
 
 	// reset brake input to zero
 	ChaosVehicleMovement->SetBrakeInput(0.0f);
 }
 
-void ACXPawn::DoHandbrakeStart()
+void ACXPawn::StartHandbrake(const FInputActionValue& Value)
 {
 	// add the input
 	ChaosVehicleMovement->SetHandbrakeInput(true);
@@ -231,7 +158,7 @@ void ACXPawn::DoHandbrakeStart()
 	BrakeLights(true);
 }
 
-void ACXPawn::DoHandbrakeStop()
+void ACXPawn::StopHandbrake(const FInputActionValue& Value)
 {
 	// add the input
 	ChaosVehicleMovement->SetHandbrakeInput(false);
@@ -240,13 +167,16 @@ void ACXPawn::DoHandbrakeStop()
 	BrakeLights(false);
 }
 
-void ACXPawn::DoLookAround(float YawDelta)
+void ACXPawn::LookAround(const FInputActionValue& Value)
 {
-	// rotate the spring arm
-	BackSpringArm->AddLocalRotation(FRotator(0.0f, YawDelta, 0.0f));
+	// get the flat angle value for the input 
+	float LookValue = Value.Get<float>();
+
+	// add the input
+	BackSpringArm->AddLocalRotation(FRotator(0.0f, LookValue, 0.0f));
 }
 
-void ACXPawn::DoToggleCamera()
+void ACXPawn::ToggleCamera(const FInputActionValue& Value)
 {
 	// toggle the active camera flag
 	bFrontCameraActive = !bFrontCameraActive;
@@ -255,7 +185,7 @@ void ACXPawn::DoToggleCamera()
 	BackCamera->SetActive(!bFrontCameraActive);
 }
 
-void ACXPawn::DoResetVehicle()
+void ACXPawn::ResetVehicle(const FInputActionValue& Value)
 {
 	// reset to a location slightly above our current one
 	FVector ResetLocation = GetActorLocation() + FVector(0.0f, 0.0f, 50.0f);
@@ -264,36 +194,14 @@ void ACXPawn::DoResetVehicle()
 	FRotator ResetRotation = GetActorRotation();
 	ResetRotation.Pitch = 0.0f;
 	ResetRotation.Roll = 0.0f;
-
+	
 	// teleport the actor to the reset spot and reset physics
 	SetActorTransform(FTransform(ResetRotation, ResetLocation, FVector::OneVector), false, nullptr, ETeleportType::TeleportPhysics);
 
 	GetMesh()->SetPhysicsAngularVelocityInDegrees(FVector::ZeroVector);
 	GetMesh()->SetPhysicsLinearVelocity(FVector::ZeroVector);
-}
 
-void ACXPawn::FlippedCheck()
-{
-	// check the difference in angle between the mesh's up vector and world up
-	const float UpDot = FVector::DotProduct(FVector::UpVector, GetMesh()->GetUpVector());
-
-	if (UpDot < FlipCheckMinDot)
-	{
-		// is this the second time we've checked that the vehicle is still flipped?
-		if (bPreviousFlipCheck)
-		{
-			// reset the vehicle to upright
-			DoResetVehicle();
-		}
-		
-		// set the flipped check flag so the next check resets the car
-		bPreviousFlipCheck = true;
-
-	} else {
-
-		// we're upright. reset the flipped check flag
-		bPreviousFlipCheck = false;
-	}
+	UE_LOG(LogTemplateVehicle, Error, TEXT("Reset Vehicle"));
 }
 
 #undef LOCTEXT_NAMESPACE

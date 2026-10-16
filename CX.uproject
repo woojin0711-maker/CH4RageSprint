@@ -27,14 +27,8 @@
 			]
 		},
 		{
-			"Name": "GameInputWindows",
-			"Enabled": true,
-			"SupportedTargetPlatforms": [
-				"Win64"
-			],
-			"TargetDenyList": [
-				"Server"
-			]
+			"Name": "RawInput",
+			"Enabled": true
 		}
 	]
 }
