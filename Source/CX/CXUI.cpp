@@ -23,3 +23,4 @@ void UCXUI::UpdateGear(int32 NewGear)
 	// call the Blueprint handler
 	OnGearUpdate(NewGear);
 }
+

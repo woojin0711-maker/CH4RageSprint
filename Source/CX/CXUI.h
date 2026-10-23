@@ -41,6 +41,10 @@ public:
 	/** Called to update the gear display */
 	void UpdateGear(int32 NewGear);
 
+	void UpdateStats(int32 Coins, float BonusMaxSpeed) {
+		OnStatsUpdate(Coins, BonusMaxSpeed);
+	}
+
 protected:
 
 	/** Implemented in Blueprint to display the new speed */
@@ -50,4 +54,8 @@ protected:
 	/** Implemented in Blueprint to display the new gear */
 	UFUNCTION(BlueprintImplementableEvent, Category = Vehicle)
 	void OnGearUpdate(int32 NewGear);
+
+	/** Implemented in Blueprint to display the new stats */
+	UFUNCTION(BlueprintImplementableEvent, Category = Vehicle)
+	void OnStatsUpdate(int32 Coins, float BonusMaxSpeed);
 };

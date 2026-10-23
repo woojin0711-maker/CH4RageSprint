@@ -10,6 +10,7 @@
 #include "GameFramework/PlayerState.h"
 #include "EngineUtils.h"
 #include "Subsystem/ChatSubsystem.h"
+#include "CXPlayerState.h"
 
 void ACXPlayerController::STCChatLog_Implementation(const TArray<FChatData>& ChatLog)
 {
@@ -117,4 +118,28 @@ void ACXPlayerController::OnPossess(APawn* InPawn)
 
 	// get a pointer to the controlled pawn
 	VehiclePawn = CastChecked<ACXPawn>(InPawn);
+}
+
+void ACXPlayerController::UpdateStatUI(int32 Coins, float BonusMaxSpeed)
+{
+	if (IsValid(VehicleUI) == false)
+	{
+		return;
+	}
+
+	VehicleUI->UpdateStats(Coins, BonusMaxSpeed);
+}
+
+
+void ACXPlayerController::CheatAddCoins(int32 Amount)
+{
+	ServerCheatAddCoins(Amount);
+}
+
+void ACXPlayerController::ServerCheatAddCoins_Implementation(int32 Amount)
+{
+	if (ACXPlayerState* PS = GetPlayerState<ACXPlayerState>())
+	{
+		PS->AddCoins(Amount);
+	}
 }

@@ -6,10 +6,12 @@
 #include "Engine/World.h"
 #include "GameFramework/PlayerStart.h"
 #include "Subsystem/ChatSubsystem.h"
+#include "CXPlayerState.h"
 
 ACXGameMode::ACXGameMode()
 {
 	PlayerControllerClass = ACXPlayerController::StaticClass();
+	PlayerStateClass = ACXPlayerState::StaticClass();
 }
 
 void ACXGameMode::PostLogin(APlayerController* NewPlayer)

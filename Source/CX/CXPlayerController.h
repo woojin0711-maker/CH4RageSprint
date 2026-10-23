@@ -73,9 +73,13 @@ public:
 
 	virtual void Tick(float Delta) override;
 
-	// End Actor interface
+	void UpdateStatUI(int32 Coins, float BonusMaxSpeed);
 
-	// Begin PlayerController interface
+	UFUNCTION(Exec)
+	void CheatAddCoins(int32 Amount);
+
+	UFUNCTION(Server, Reliable)
+	void ServerCheatAddCoins(int32 Amount);
 protected:
 
 	virtual void OnPossess(APawn* InPawn) override;
