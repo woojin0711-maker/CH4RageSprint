@@ -14,6 +14,9 @@
 #include "Engine/DamageEvents.h"
 #include "CXPlayerState.h"
 #include "DrawDebugHelpers.h"
+#include "Net/UnrealNetwork.h"
+#include "CXGameState.h"
+#include "CXMine.h"
 #include "Particles/ParticleSystemComponent.h"
 
 #define LOCTEXT_NAMESPACE "VehiclePawn"
@@ -57,6 +60,7 @@ ACXPawn::ACXPawn()
 	// get the Chaos Wheeled movement component
 	ChaosVehicleMovement = CastChecked<UChaosWheeledVehicleMovementComponent>(GetVehicleMovement());
 
+	MineClass = ACXMine::StaticClass();
 }
 
 void ACXPawn::SetupPlayerInputComponent(class UInputComponent* PlayerInputComponent)
@@ -92,6 +96,9 @@ void ACXPawn::SetupPlayerInputComponent(class UInputComponent* PlayerInputCompon
 		EnhancedInputComponent->BindAction(ResetVehicleAction, ETriggerEvent::Triggered, this, &ACXPawn::ResetVehicle);
 
 		EnhancedInputComponent->BindAction(AttackAction, ETriggerEvent::Started, this, &ACXPawn::Attack);
+
+		// place mine
+		EnhancedInputComponent->BindAction(MineAction, ETriggerEvent::Started, this, &ACXPawn::PlaceMine);
 	}
 	else
 	{
@@ -112,12 +119,34 @@ void ACXPawn::Tick(float Delta)
 	CameraYaw = FMath::FInterpTo(CameraYaw, 0.0f, Delta, 1.0f);
 
 	BackSpringArm->SetRelativeRotation(FRotator(0.0f, CameraYaw, 0.0f));
+
+	// Waiting / Finished: keep the car parked. Only the controlling machine sends input.
+	if (IsLocallyControlled())
+	{
+		if (IsMatchPlaying() == false)
+		{
+			ChaosVehicleMovement->SetThrottleInput(0.0f);
+			ChaosVehicleMovement->SetSteeringInput(0.0f);
+			ChaosVehicleMovement->SetHandbrakeInput(true);
+			bMatchHandbrakeLocked = true;
+		}
+		else if (bMatchHandbrakeLocked)
+		{
+			ChaosVehicleMovement->SetHandbrakeInput(false);
+			bMatchHandbrakeLocked = false;
+		}
+	}
 }
 
 void ACXPawn::Steering(const FInputActionValue& Value)
 {
 	// get the input magnitude for steering
 	float SteeringValue = Value.Get<float>();
+
+	if (IsMatchPlaying() == false)
+	{
+		SteeringValue = 0.0f;
+	}
 
 	// add the input
 	ChaosVehicleMovement->SetSteeringInput(SteeringValue);
@@ -127,6 +156,12 @@ void ACXPawn::Throttle(const FInputActionValue& Value)
 {
 	// get the input magnitude for the throttle
 	float ThrottleValue = Value.Get<float>();
+
+	// the accelerator does nothing outside Playing or while a mine has broken it
+	if (IsMatchPlaying() == false || bThrottleBroken)
+	{
+		ThrottleValue = 0.0f;
+	}
 
 	// add the input
 	ChaosVehicleMovement->SetThrottleInput(ThrottleValue);
@@ -167,6 +202,12 @@ void ACXPawn::StartHandbrake(const FInputActionValue& Value)
 
 void ACXPawn::StopHandbrake(const FInputActionValue& Value)
 {
+	// releasing the key must not release the match handbrake lock
+	if (IsMatchPlaying() == false)
+	{
+		return;
+	}
+
 	// add the input
 	ChaosVehicleMovement->SetHandbrakeInput(false);
 
@@ -194,6 +235,11 @@ void ACXPawn::ToggleCamera(const FInputActionValue& Value)
 
 void ACXPawn::ResetVehicle(const FInputActionValue& Value)
 {
+	if (IsMatchPlaying() == false)
+	{
+		return;
+	}
+
 	// reset to a location slightly above our current one
 	FVector ResetLocation = GetActorLocation() + FVector(0.0f, 0.0f, 50.0f);
 
@@ -215,11 +261,22 @@ void ACXPawn::ResetVehicle(const FInputActionValue& Value)
 
 void ACXPawn::Attack(const FInputActionValue& Value)
 {
+	if (IsMatchPlaying() == false)
+	{
+		return;
+	}
+
 	ServerAttack();
 }
 
 void ACXPawn::ServerAttack_Implementation()
 {
+	// check again on the server so a modified client can't attack early
+	if (IsMatchPlaying() == false)
+	{
+		return;
+	}
+
 	const FVector Start = GetActorTransform().TransformPosition(BumperOffset);
 	const FVector End = Start + GetActorForwardVector() * AttackRange;
 
@@ -236,7 +293,8 @@ void ACXPawn::ServerAttack_Implementation()
 	{
 		if (ACXPawn* Victim = Cast<ACXPawn>(Hit.GetActor()))
 		{
-			UGameplayStatics::ApplyDamage(Victim, 1.f, GetController(), this, UDamageType::StaticClass());
+			// point damage carries the hit bone so the victim can tell if a wheel was hit
+			UGameplayStatics::ApplyPointDamage(Victim, 1.f, GetActorForwardVector(), Hit, GetController(), this, UDamageType::StaticClass());
 		}
 	}
 
@@ -265,7 +323,95 @@ float ACXPawn::TakeDamage(float DamageAmount, FDamageEvent const& DamageEvent,
 		AttackerPS->AddCoins(5);
 	}
 
+	// wheel bodies are named like Phys_Wheel_FL (sports car) or PhysWheel_FL (offroad car)
+	if (DamageEvent.IsOfType(FPointDamageEvent::ClassID))
+	{
+		const FPointDamageEvent& PointDamage = static_cast<const FPointDamageEvent&>(DamageEvent);
+		if (PointDamage.HitInfo.BoneName.ToString().Contains(TEXT("Wheel")))
+		{
+			VictimPS->ApplySpeedPenalty(WheelHitPenalty);
+		}
+	}
+
 	return Damage;
+}
+
+void ACXPawn::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const
+{
+	Super::GetLifetimeReplicatedProps(OutLifetimeProps);
+
+	DOREPLIFETIME(ThisClass, bThrottleBroken);
+}
+
+bool ACXPawn::IsMatchPlaying() const
+{
+	const ACXGameState* GS = GetWorld() ? GetWorld()->GetGameState<ACXGameState>() : nullptr;
+	return IsValid(GS) && GS->GetMatchPhase() == ECXMatchPhase::Playing;
+}
+
+void ACXPawn::PlaceMine(const FInputActionValue& Value)
+{
+	if (IsMatchPlaying() == false)
+	{
+		return;
+	}
+
+	ServerPlaceMine();
+}
+
+void ACXPawn::ServerPlaceMine_Implementation()
+{
+	if (IsMatchPlaying() == false || MineClass == nullptr)
+	{
+		return;
+	}
+
+	// drop straight down from behind the car onto the ground
+	const FVector Behind = GetActorTransform().TransformPosition(MineSpawnOffset);
+	FVector SpawnLocation = Behind;
+
+	FCollisionQueryParams QueryParams(SCENE_QUERY_STAT(MineGroundTrace), false);
+	QueryParams.AddIgnoredActor(this);
+
+	FHitResult GroundHit;
+	if (GetWorld()->LineTraceSingleByChannel(GroundHit, Behind + FVector(0.f, 0.f, 200.f), Behind - FVector(0.f, 0.f, 1000.f), ECC_Visibility, QueryParams))
+	{
+		SpawnLocation = GroundHit.ImpactPoint;
+	}
+
+	FActorSpawnParameters SpawnParams;
+	SpawnParams.Owner = this;
+	SpawnParams.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AlwaysSpawn;
+
+	GetWorld()->SpawnActor<ACXMine>(MineClass, SpawnLocation, FRotator(0.f, GetActorRotation().Yaw, 0.f), SpawnParams);
+}
+
+void ACXPawn::BreakThrottle()
+{
+	if (HasAuthority() == false)
+	{
+		return;
+	}
+
+	bThrottleBroken = true;
+	OnRep_ThrottleBroken(); // listen server host does not get OnRep
+
+	// hitting another mine restarts the 2 second timer
+	GetWorldTimerManager().SetTimer(ThrottleRepairTimer, this, &ACXPawn::RepairThrottle, ThrottleBreakDuration, false);
+}
+
+void ACXPawn::RepairThrottle()
+{
+	bThrottleBroken = false;
+	OnRep_ThrottleBroken();
+}
+
+void ACXPawn::OnRep_ThrottleBroken()
+{
+	if (bThrottleBroken)
+	{
+		ChaosVehicleMovement->SetThrottleInput(0.0f);
+	}
 }
 
 void ACXPawn::MulticastAttackEffect_Implementation(FVector Start, FVector End, AActor* HitActor, FVector HitLocation)

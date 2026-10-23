@@ -14,6 +14,7 @@ class USpringArmComponent;
 class UInputAction;
 class UChaosWheeledVehicleMovementComponent;
 class UParticleSystem;
+class ACXMine;
 struct FInputActionValue;
 
 DECLARE_LOG_CATEGORY_EXTERN(LogTemplateVehicle, Log, All);
@@ -88,6 +89,33 @@ protected:
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = Attack)
 	float AttackRange = 1500.f;
 
+	/** Bonus max speed penalty applied when a wheel is hit */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = Attack)
+	float WheelHitPenalty = 20.f;
+
+	/** Place Mine Action */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = Input)
+	UInputAction* MineAction;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = Mine)
+	TSubclassOf<ACXMine> MineClass;
+
+	/** Where to drop the mine, relative to the car (behind the rear bumper) */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = Mine)
+	FVector MineSpawnOffset = FVector(-350.f, 0.f, 0.f);
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = Mine)
+	float ThrottleBreakDuration = 2.f;
+
+	/** True while a mine has broken the accelerator pedal */
+	UPROPERTY(ReplicatedUsing = OnRep_ThrottleBroken)
+	bool bThrottleBroken = false;
+
+	FTimerHandle ThrottleRepairTimer;
+
+	/** True while the handbrake is held because the match is not in Playing */
+	bool bMatchHandbrakeLocked = false;
+
 	/** Keeps track of which camera is active */
 	bool bFrontCameraActive = false;
 
@@ -107,6 +135,11 @@ public:
 	// End Actor interface
 
 	virtual float TakeDamage(float DamageAmount, struct FDamageEvent const& DamageEvent, class AController* EventInstigator, AActor* DamageCauser) override;
+
+	virtual void GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const override;
+
+	/** Server only. Forces throttle to zero for ThrottleBreakDuration seconds */
+	void BreakThrottle();
 
 protected:
 
@@ -138,6 +171,20 @@ protected:
 
 	/** Handles attack input */
 	void Attack(const FInputActionValue& Value);
+
+	/** Handles place mine input */
+	void PlaceMine(const FInputActionValue& Value);
+
+	UFUNCTION(Server, Reliable)
+	void ServerPlaceMine();
+
+	UFUNCTION()
+	void OnRep_ThrottleBroken();
+
+	void RepairThrottle();
+
+	/** Driving, attacking and mines are only allowed while the match is Playing */
+	bool IsMatchPlaying() const;
 
 	/** Called when the brake lights are turned on or off */
 	UFUNCTION(BlueprintImplementableEvent, Category="Vehicle")

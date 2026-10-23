@@ -20,8 +20,11 @@ public:
 	bool RemoveCoins(int32 Amount);   // 부족하면 false, 공격 판정에서 사용
 	void AddBonusMaxSpeed(float Amount);
 
+	// 바퀴를 맞으면 음수 패널티. 시간이 지나면 0까지만 회복
+	void ApplySpeedPenalty(float Amount);
+
 	int32 GetCoins() const { return Coins; }
-	float GetBonusMaxSpeed() const { return BonusMaxSpeed; }
+	float GetBonusMaxSpeed() const { return BonusMaxSpeed + SpeedPenalty; }
 
 protected:
 	virtual void GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const override;
@@ -36,9 +39,20 @@ private:
 	// 로컬 플레이어라면 화면 UI를 갱신
 	void RefreshOwnerUI();
 
+	void RecoverSpeedPenalty();
+
 	UPROPERTY(ReplicatedUsing = OnRep_Coins)
 	int32 Coins = 0;
 
 	UPROPERTY(ReplicatedUsing = OnRep_BonusMaxSpeed)
 	float BonusMaxSpeed = 0.f;
+
+	// 항상 0 이하
+	UPROPERTY(ReplicatedUsing = OnRep_BonusMaxSpeed)
+	float SpeedPenalty = 0.f;
+
+	UPROPERTY(EditDefaultsOnly, Category = Penalty)
+	float PenaltyRecoveryPerSecond = 5.f;
+
+	FTimerHandle PenaltyRecoveryTimer;
 };

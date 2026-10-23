@@ -10,6 +10,7 @@ void ACXPlayerState::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLi
 	Super::GetLifetimeReplicatedProps(OutLifetimeProps);
 	DOREPLIFETIME_CONDITION(ThisClass, Coins, COND_OwnerOnly);
 	DOREPLIFETIME_CONDITION(ThisClass, BonusMaxSpeed, COND_OwnerOnly);
+	DOREPLIFETIME_CONDITION(ThisClass, SpeedPenalty, COND_OwnerOnly);
 }
 
 void ACXPlayerState::OnRep_Coins()
@@ -36,7 +37,7 @@ void ACXPlayerState::RefreshOwnerUI()
 		return;
 	}
 
-	PC->UpdateStatUI(Coins, BonusMaxSpeed);
+	PC->UpdateStatUI(Coins, GetBonusMaxSpeed());
 }
 
 void ACXPlayerState::OnRep_BonusMaxSpeed()
@@ -64,4 +65,32 @@ void ACXPlayerState::AddBonusMaxSpeed(float Amount)
 	}
 	BonusMaxSpeed += Amount;
 	RefreshOwnerUI();
+}
+
+void ACXPlayerState::ApplySpeedPenalty(float Amount)
+{
+	if (HasAuthority() == false || Amount <= 0.f)
+	{
+		return;
+	}
+
+	SpeedPenalty -= Amount;
+	RefreshOwnerUI();
+
+	if (GetWorldTimerManager().IsTimerActive(PenaltyRecoveryTimer) == false)
+	{
+		GetWorldTimerManager().SetTimer(PenaltyRecoveryTimer, this, &ACXPlayerState::RecoverSpeedPenalty, 0.1f, true);
+	}
+}
+
+void ACXPlayerState::RecoverSpeedPenalty()
+{
+	// 0을 넘어 양수가 되지 않게 Min으로 막는다
+	SpeedPenalty = FMath::Min(SpeedPenalty + PenaltyRecoveryPerSecond * 0.1f, 0.f);
+	RefreshOwnerUI();
+
+	if (SpeedPenalty >= 0.f)
+	{
+		GetWorldTimerManager().ClearTimer(PenaltyRecoveryTimer);
+	}
 }
