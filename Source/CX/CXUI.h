@@ -4,6 +4,7 @@
 
 #include "CoreMinimal.h"
 #include "Blueprint/UserWidget.h"
+#include "CXGameState.h"
 #include "CXUI.generated.h"
 
 class UChatUI;
@@ -45,6 +46,9 @@ public:
 		OnStatsUpdate(Coins, BonusMaxSpeed);
 	}
 
+	void UpdateMatch(ECXMatchPhase Phase, int32 RemainingTime) { OnMatchUpdate(Phase, RemainingTime); }
+	void ShowResult(bool bIsWinner) { OnMatchResult(bIsWinner); }
+
 protected:
 
 	/** Implemented in Blueprint to display the new speed */
@@ -58,4 +62,12 @@ protected:
 	/** Implemented in Blueprint to display the new stats */
 	UFUNCTION(BlueprintImplementableEvent, Category = Vehicle)
 	void OnStatsUpdate(int32 Coins, float BonusMaxSpeed);
+
+	/** Implemented in Blueprint to display the match phase and remaining time */
+	UFUNCTION(BlueprintImplementableEvent, Category = Match)
+	void OnMatchUpdate(ECXMatchPhase Phase, int32 RemainingTime);
+
+	/** Implemented in Blueprint to display win or lose */
+	UFUNCTION(BlueprintImplementableEvent, Category = Match)
+	void OnMatchResult(bool bIsWinner);
 };

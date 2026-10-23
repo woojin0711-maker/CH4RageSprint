@@ -130,6 +130,26 @@ void ACXPlayerController::UpdateStatUI(int32 Coins, float BonusMaxSpeed)
 	VehicleUI->UpdateStats(Coins, BonusMaxSpeed);
 }
 
+void ACXPlayerController::UpdateMatchUI(ECXMatchPhase Phase, int32 RemainingTime)
+{
+	if (IsValid(VehicleUI) == false)
+	{
+		return;
+	}
+
+	VehicleUI->UpdateMatch(Phase, RemainingTime);
+}
+
+void ACXPlayerController::ShowMatchResult(bool bIsWinner)
+{
+	if (IsValid(VehicleUI) == false)
+	{
+		return;
+	}
+
+	VehicleUI->ShowResult(bIsWinner);
+}
+
 
 void ACXPlayerController::CheatAddCoins(int32 Amount)
 {

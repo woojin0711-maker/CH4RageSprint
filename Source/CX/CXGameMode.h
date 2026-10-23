@@ -20,6 +20,19 @@ protected:
 	/** Called after a successful login.  This is the first place it is safe to call replicated functions on the PlayerController. */
 	virtual void PostLogin(APlayerController* NewPlayer);
 
+	void StartMatchTimer();
+	void OnMatchTick();
+	void FinishMatch();
+
+private:
+	UPROPERTY(EditDefaultsOnly, Category = Match)
+	int32 WaitingTime = 10;
+
+	UPROPERTY(EditDefaultsOnly, Category = Match)
+	int32 PlayingTime = 60;
+
+	FTimerHandle MatchTimer;
+
 private:
 	bool IsPlayerStartAvailable(const APlayerStart* PlayerStart) const;
 

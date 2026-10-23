@@ -5,6 +5,7 @@
 #include "CoreMinimal.h"
 #include "GameFramework/PlayerController.h"
 #include "Subsystem/ChatSubsystem.h"
+#include "CXGameState.h"
 #include "CXPlayerController.generated.h"
 
 class UInputMappingContext;
@@ -74,6 +75,9 @@ public:
 	virtual void Tick(float Delta) override;
 
 	void UpdateStatUI(int32 Coins, float BonusMaxSpeed);
+
+	void UpdateMatchUI(ECXMatchPhase Phase, int32 RemainingTime);
+	void ShowMatchResult(bool bIsWinner);
 
 	UFUNCTION(Exec)
 	void CheatAddCoins(int32 Amount);
