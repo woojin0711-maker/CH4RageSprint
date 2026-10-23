@@ -43,3 +43,25 @@ void ACXPlayerState::OnRep_BonusMaxSpeed()
 {
 	RefreshOwnerUI();
 }
+
+bool ACXPlayerState::RemoveCoins(int32 Amount)
+{
+	if (HasAuthority() == false || Amount <= 0 || Coins < Amount)
+	{
+		return false;
+	}
+
+	Coins -= Amount;
+	RefreshOwnerUI();
+	return true;
+}
+
+void ACXPlayerState::AddBonusMaxSpeed(float Amount)
+{
+	if (HasAuthority() == false || Amount <= 0.f)
+	{
+		return;
+	}
+	BonusMaxSpeed += Amount;
+	RefreshOwnerUI();
+}

@@ -10,6 +10,11 @@
 #include "EnhancedInputSubsystems.h"
 #include "InputActionValue.h"
 #include "ChaosWheeledVehicleMovementComponent.h"
+#include "Kismet/GameplayStatics.h"
+#include "Engine/DamageEvents.h"
+#include "CXPlayerState.h"
+#include "DrawDebugHelpers.h"
+#include "Particles/ParticleSystemComponent.h"
 
 #define LOCTEXT_NAMESPACE "VehiclePawn"
 
@@ -85,6 +90,8 @@ void ACXPawn::SetupPlayerInputComponent(class UInputComponent* PlayerInputCompon
 
 		// reset the vehicle 
 		EnhancedInputComponent->BindAction(ResetVehicleAction, ETriggerEvent::Triggered, this, &ACXPawn::ResetVehicle);
+
+		EnhancedInputComponent->BindAction(AttackAction, ETriggerEvent::Started, this, &ACXPawn::Attack);
 	}
 	else
 	{
@@ -205,3 +212,83 @@ void ACXPawn::ResetVehicle(const FInputActionValue& Value)
 }
 
 #undef LOCTEXT_NAMESPACE
+
+void ACXPawn::Attack(const FInputActionValue& Value)
+{
+	ServerAttack();
+}
+
+void ACXPawn::ServerAttack_Implementation()
+{
+	const FVector Start = GetActorTransform().TransformPosition(BumperOffset);
+	const FVector End = Start + GetActorForwardVector() * AttackRange;
+
+	FCollisionObjectQueryParams ObjectParams;
+	ObjectParams.AddObjectTypesToQuery(ECC_Vehicle);
+
+	FCollisionQueryParams QueryParams(SCENE_QUERY_STAT(VehicleAttack), false);
+	QueryParams.AddIgnoredActor(this);
+
+	FHitResult Hit;
+	const bool bHit = GetWorld()->LineTraceSingleByObjectType(Hit, Start, End, ObjectParams, QueryParams);
+
+	if (bHit)
+	{
+		if (ACXPawn* Victim = Cast<ACXPawn>(Hit.GetActor()))
+		{
+			UGameplayStatics::ApplyDamage(Victim, 1.f, GetController(), this, UDamageType::StaticClass());
+		}
+	}
+
+	MulticastAttackEffect(Start, bHit ? Hit.ImpactPoint : End, bHit ? Hit.GetActor() : nullptr, Hit.ImpactPoint);
+}
+
+float ACXPawn::TakeDamage(float DamageAmount, FDamageEvent const& DamageEvent,
+	AController* EventInstigator, AActor* DamageCauser)
+{
+	const float Damage = Super::TakeDamage(DamageAmount, DamageEvent, EventInstigator, DamageCauser);
+
+	if (HasAuthority() == false || IsValid(EventInstigator) == false)
+	{
+		return Damage;
+	}
+
+	ACXPlayerState* VictimPS = GetPlayerState<ACXPlayerState>();
+	ACXPlayerState* AttackerPS = EventInstigator->GetPlayerState<ACXPlayerState>();
+	if (IsValid(VictimPS) == false || IsValid(AttackerPS) == false)
+	{
+		return Damage;
+	}
+
+	if (VictimPS->RemoveCoins(5))
+	{
+		AttackerPS->AddCoins(5);
+	}
+
+	return Damage;
+}
+
+void ACXPawn::MulticastAttackEffect_Implementation(FVector Start, FVector End, AActor* HitActor, FVector HitLocation)
+{
+	const FColor LineColor = IsValid(HitActor) ? FColor::Red : FColor::Green;
+	DrawDebugLine(GetWorld(), Start, End, LineColor, false, 1.f, 0, 3.f);
+
+	ACXPawn* Victim = Cast<ACXPawn>(HitActor);
+	if (IsValid(Victim) == false || HitParticle == nullptr)
+	{
+		return;
+	}
+
+	UParticleSystemComponent* Particle = UGameplayStatics::SpawnEmitterAttached(
+		HitParticle, Victim->GetMesh(), NAME_None,
+		HitLocation, FRotator::ZeroRotator, EAttachLocation::KeepWorldPosition);
+
+	if (IsValid(Particle))
+	{
+		// 반복 파티클은 스스로 안 끝나서 직접 지운다
+		FTimerHandle Handle;
+		GetWorldTimerManager().SetTimer(Handle,
+			FTimerDelegate::CreateWeakLambda(Particle, [Particle]() { Particle->DestroyComponent(); }),
+			1.f, false);
+	}
+}

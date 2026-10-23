@@ -4,12 +4,16 @@
 
 #include "CoreMinimal.h"
 #include "WheeledVehiclePawn.h"
+
+
+
 #include "CXPawn.generated.h"
 
 class UCameraComponent;
 class USpringArmComponent;
 class UInputAction;
 class UChaosWheeledVehicleMovementComponent;
+class UParticleSystem;
 struct FInputActionValue;
 
 DECLARE_LOG_CATEGORY_EXTERN(LogTemplateVehicle, Log, All);
@@ -75,6 +79,15 @@ protected:
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = Input)
 	UInputAction* ResetVehicleAction;
 
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = Input)
+	UInputAction* AttackAction;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = Attack)
+	FVector BumperOffset = FVector(250.f, 0.f, 50.f);
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = Attack)
+	float AttackRange = 1500.f;
+
 	/** Keeps track of which camera is active */
 	bool bFrontCameraActive = false;
 
@@ -92,6 +105,8 @@ public:
 	virtual void Tick(float Delta) override;
 
 	// End Actor interface
+
+	virtual float TakeDamage(float DamageAmount, struct FDamageEvent const& DamageEvent, class AController* EventInstigator, AActor* DamageCauser) override;
 
 protected:
 
@@ -121,9 +136,21 @@ protected:
 	/** Handles reset vehicle input */
 	void ResetVehicle(const FInputActionValue& Value);
 
+	/** Handles attack input */
+	void Attack(const FInputActionValue& Value);
+
 	/** Called when the brake lights are turned on or off */
 	UFUNCTION(BlueprintImplementableEvent, Category="Vehicle")
 	void BrakeLights(bool bBraking);
+
+	UFUNCTION(Server, Reliable)
+	void ServerAttack();
+
+	UFUNCTION(NetMulticast, Unreliable)
+	void MulticastAttackEffect(FVector Start, FVector End, AActor* HitActor, FVector HitLocation);
+
+	UPROPERTY(EditDefaultsOnly, Category = Attack)
+	TObjectPtr<UParticleSystem> HitParticle;
 
 public:
 	/** Returns the front spring arm subobject */
